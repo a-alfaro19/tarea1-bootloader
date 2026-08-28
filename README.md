@@ -22,7 +22,31 @@ Este comando instalará los siguientes componentes clave:
 
 - `make`: Herramienta de automatización para simplificar la compilación mediante el archivo Makefile.
 
-- `build-essentia`l: Paquete que incluye herramientas de compilación esenciales (como el compilador de C y utilidades como dd).
+- `build-essential`: Paquete que incluye herramientas de compilación esenciales (como el compilador de C y utilidades como dd).
+
+## Legacy Mode Boot
+
+Para que el BIOS reconozca y ejecute correctamente el cargador de arranque en modo tradicional (MBR), la estructura del binario debe cumplir estrictamente con dos reglas físicas:
+
+- **Relleno de tamaño exacto (512 bytes)**: El sector de arranque MBR mide obligatoriamente 512 bytes. Se utiliza la directiva de relleno para completar con ceros el espacio restante que no ocupe nuestro código.
+
+```asm
+times 510-($-$$) db 0
+```
+
+- **Firma de arranque (0xAA55)**: Los últimos 2 bytes del sector deben contener la firma mágica (0xAA55). Sin este sello, el BIOS descarta el disco por considerarlo no arrancable.
+
+```asm
+dw 0xAA55
+```
+
+## Interrupciones y Servicios del BIOS
+
+El bootloader utiliza los servicios de bajo nivel proporcionados por la BIOS a través de interrupciones de software para interactuar con el hardware.
+
+| Interrupción | Registro `AH` | Registro `BH` | Registro `AL`  | Descripción / Propósito                                                                                                                                           |
+| :----------- | :------------ | :------------ | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `int 0x10`   | `0x0E`        | `0x00`        | Carácter ASCII | **Modo Teletipo (TTY):** Imprime en pantalla el carácter almacenado en `AL`, avanza el cursor automáticamente y maneja saltos de línea en la página de video `0`. |
 
 ## Instrucciones de Ejecución (Makefile)
 
