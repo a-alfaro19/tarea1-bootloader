@@ -58,8 +58,10 @@ $(UEFI_IMG): $(UEFI_BIN)
 # ------------------------------------------------------------------------------
 
 # Ejecutar en Modo Legacy
+# -rtc base=localtime: por defecto QEMU pone el RTC virtual en UTC, no en la
+# hora local del host, lo que hace parecer incorrecta la hora que lee la app.
 run-legacy: $(LEGACY_IMG)
-	$(QEMU) -drive format=raw,file=$(LEGACY_IMG)
+	$(QEMU) -drive format=raw,file=$(LEGACY_IMG) -rtc base=localtime
 
 # Ejecutar en Modo UEFI (Requiere firmware OVMF instalado en el sistema)
 run-uefi: $(UEFI_IMG)

@@ -7,6 +7,8 @@
 KEY_ENTER equ 0x0D           ; Tecla que confirma la pantalla inicial
 
 app_start:
+    cld                   ; Asegura DF=0 para lodsb/stosb; el BIOS normalmente
+                          ; ya lo deja así, pero no está garantizado en todo hardware.
     call limpiar_pantalla
 
     mov dh, 8
@@ -29,24 +31,40 @@ esperar_confirmacion:
     cmp al, KEY_ENTER
     jne esperar_confirmacion
 
-    ; Confirmado. Placeholder del modo interactivo: los modos Reloj y
-    ; Cronómetro se integran en las siguientes fases del plan (docs/plan.md).
+    ; Confirmado: entra al modo Reloj. Los modos Cronómetro/Alarma y el
+    ; cambio de modo con teclado llegan en las siguientes fases (docs/plan.md).
+modo_reloj:
     call limpiar_pantalla
-    mov dh, 10
-    mov dl, 20
-    mov si, modo_interactivo_msg
+    mov dh, 5
+    mov dl, 31
+    mov si, reloj_titulo
     call imprimir_en
 
-app_hang:
-    cli
-    hlt
-    jmp app_hang
+reloj_loop:
+    call leer_hora_rtc          ; CH=hora, CL=minutos, DH=segundos (BCD)
+
+    cmp dh, [ultimo_segundo]
+    je reloj_loop                ; mismo segundo ya dibujado, no repetir (evita parpadeo)
+
+    mov [ultimo_segundo], dh
+
+    mov di, hora_buffer          ; ES:DI = destino (ES=0, heredado de boot_legacy.asm)
+    call formatear_hora
+
+    mov dh, 7
+    mov dl, 36
+    mov si, hora_buffer
+    call imprimir_en
+
+    jmp reloj_loop
 
 ; --- Datos de la Aplicación ---
 bienvenida_linea1    db "=== Reloj / Cronometro con Alarma ===", 0
 bienvenida_linea2    db "Tarea 1 - CE 4303", 0
 bienvenida_prompt    db "Presione ENTER para continuar...", 0
-modo_interactivo_msg db "Confirmado. (modo interactivo: pendiente)", 0
+reloj_titulo         db "-- Modo Reloj --", 0
+ultimo_segundo       db 0xFF          ; Segundo BCD ya dibujado; 0xFF fuerza el primer dibujo
+hora_buffer          times 9 db 0     ; "HH:MM:SS", 0
 
 ; --- Módulos de la aplicación (reloj/cronómetro/alarma) ---
 %include "video.inc"
