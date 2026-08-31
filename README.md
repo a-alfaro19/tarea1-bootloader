@@ -9,7 +9,7 @@ Este proyecto está diseñado para ejecutarse en entornos **Linux** (o en **WSL 
 Abre tu terminal de Linux / WSL e instala las herramientas necesarias de compilación, empaquetado y emulación ejecutando el siguiente comando:
 
 ```bash
-sudo apt update && sudo apt install nasm qemu-system-x86 ovmf make build-essential
+sudo apt update && sudo apt install nasm qemu-system-x86 ovmf make build-essential binutils-mingw-w64-x86-64 mtools
 ```
 
 Este comando instalará los siguientes componentes clave:
@@ -23,6 +23,10 @@ Este comando instalará los siguientes componentes clave:
 - `make`: Herramienta de automatización para simplificar la compilación mediante el archivo Makefile.
 
 - `build-essential`: Paquete que incluye herramientas de compilación esenciales (como el compilador de C y utilidades como dd).
+
+- `binutils-mingw-w64-x86-64`: Proveedor del enlazador cruzado (x86_64-w64-mingw32-ld) indispensable para generar el formato de archivo PE/COFF requerido por las aplicaciones UEFI.
+
+- `mtools`: Utilidades para manipular sistemas de archivos FAT sin necesidad de permisos de superusuario (sudo), utilizadas en el Makefile para generar la partición EFI.
 
 ## Legacy Mode Boot
 
