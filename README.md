@@ -40,6 +40,34 @@ times 510-($-$$) db 0
 dw 0xAA55
 ```
 
+## UEFI Boot
+
+A diferencia del modo tradicional, **UEFI (Unified Extensible Firmware Interface)** opera en un entorno de 64 bits protegido y utiliza un paradigma basado en **protocolos y llamadas a interfaces orientadas a objetos** a través de la `SystemTable`, eliminando por completo el uso de interrupciones de la BIOS.
+
+Para que el firmware UEFI detecte y ejecute correctamente el cargador de arranque, el proceso requiere cumplir con ciertos estándares de empaquetado y organización:
+
+- **Estructura de Directorios Específica**: El hardware y el firmware no buscan un sector de arranque en el bloque cero (como MBR), sino que montan una partición de sistema EFI (ESP - _EFI System Partition_). Dentro de ella, esperan encontrar obligatoriamente el binario ejecutable en una ruta y nombre predeterminados según la arquitectura:
+
+  ```text
+  EFI/BOOT/BOOTX64.EFI
+  ```
+
+  Para cumplir esta condición, se especificó en el Makefile la creación de la jerarquía de carpetas necesaria:
+
+  ```Makefile
+  $(UEFI_IMAGE):$(UEFI_BIN)
+      mkdir -p build/efi/EFI/BOOT
+      cp $(UEFI_BIN) build/efi/EFI/BOOT/BOOTX64.EFI
+  ```
+
+- **Formato PE/COFF**: El archivo compilado debe respetar la estructura de un ejecutable de Windows/UEFI (formato PE32+) para que el gestor de arranque del firmware pueda cargarlo, leer sus secciones de código e invocar su punto de entrada (`efi_main`). Esto se logra compilando el código como un objeto ELF y dejando que el enlazador del sistema genere automáticamente los encabezados PE/COFF mediante el Makefile:
+
+  ```Makefile
+  $(UEFI_BIN): src/boot_uefi.asm
+      nasm -f elf64 src/boot_uefi.asm -o build/boot_uefi.o
+      x86_64-w64-mingw32-ld -subsystem 10 -entry:efi_main build/boot_uefi.o -o $(UEFI_BIN)
+  ```
+
 ## Interrupciones y Servicios del BIOS
 
 El bootloader utiliza los servicios de bajo nivel proporcionados por la BIOS a través de interrupciones de software para interactuar con el hardware.
@@ -47,6 +75,15 @@ El bootloader utiliza los servicios de bajo nivel proporcionados por la BIOS a t
 | Interrupción | Registro `AH` | Registro `BH` | Registro `AL`  | Descripción / Propósito                                                                                                                                           |
 | :----------- | :------------ | :------------ | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `int 0x10`   | `0x0E`        | `0x00`        | Carácter ASCII | **Modo Teletipo (TTY):** Imprime en pantalla el carácter almacenado en `AL`, avanza el cursor automáticamente y maneja saltos de línea en la página de video `0`. |
+
+## Servicios de la SystemTable (UEFI)
+
+En UEFI, la interacción con el hardware se realiza llamando a métodos dentro de estructuras de protocolos obtenidas desde la SystemTable (pasada en rdx), utilizando la convención de llamadas x64 (argumento this en rcx).
+
+| Protocolo / Puntero | Desplazamiento (`SystemTable`) | Método / Función | Desplazamiento (en el Protocolo) | Descripción / Propósito                                                |
+| :------------------ | :----------------------------- | :--------------- | :------------------------------- | :--------------------------------------------------------------------- |
+| `ConOut`            | `+64` (`0x40`)                 | `OutputString`   | `+8` (`0x08`)                    | Imprime una cadena de texto en formato UTF-16 en la consola de salida. |
+| `ConIn`             | `+48` (`0x30`)                 | `ReadKeyStroke`  | `+8` (`0x08`)                    | Lee un evento de teclado desde la consola de entrada.                  |
 
 ## Instrucciones de Ejecución (Makefile)
 
