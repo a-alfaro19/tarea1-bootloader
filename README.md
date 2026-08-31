@@ -34,15 +34,44 @@ Para que el BIOS reconozca y ejecute correctamente el cargador de arranque en mo
 
 - **Relleno de tamaño exacto (512 bytes)**: El sector de arranque MBR mide obligatoriamente 512 bytes. Se utiliza la directiva de relleno para completar con ceros el espacio restante que no ocupe nuestro código.
 
-```asm
-times 510-($-$$) db 0
-```
+  ```asm
+  times 510-($-$$) db 0
+  ```
 
 - **Firma de arranque (0xAA55)**: Los últimos 2 bytes del sector deben contener la firma mágica (0xAA55). Sin este sello, el BIOS descarta el disco por considerarlo no arrancable.
 
-```asm
-dw 0xAA55
-```
+  ```asm
+  dw 0xAA55
+  ```
+
+### Carga y Salto hacia la Aplicación
+
+Una vez inicializado el entorno, el MBR se encarga de leer el segundo sector del disco (donde se aloja la aplicación) utilizando las interrupciones de la BIOS y transfiere el control de ejecución:
+
+- **Resguardo de la unidad de origen**: Al arrancar, la BIOS pasa el identificador del disco en el registro dl, el cual se almacena en memoria para su uso posterior.
+
+  ```asm
+  mov [boot_drive], dl
+  ```
+
+- **Lectura del disco (`int 0x13`)**: Se configura la función `0x02` de la interrupción para leer unicamente un solo sector (`al = 0x01`) desde el sector 2 (`cl = 0x02`), utilizando la unidad guardada y cargando los datos en la dirección de memoria `0x7E00`.
+
+  ```asm
+  mov ah, 0x02         ; Función de lectura de sectores
+  mov al, 0x01         ; Cantidad de sectores (1)
+  mov ch, 0x00         ; Cilindro 0
+  mov cl, 0x02         ; Sector 2 (después del MBR)
+  mov dh, 0x00         ; Cabezal 0
+  mov dl, [boot_drive] ; Unidad de disco
+  mov bx, 0x7E00       ; Dirección de destino en RAM
+  int 0x13             ; Llamada a la BIOS para leer el disco
+  ```
+
+- **Salto de ejecución**: Tras una lectura exitosa, se ejecuta un salto intersegmento para ceder el control del procesador directamente al código de la aplicación cargada en memoria.
+
+  ```asm
+  jmp 0x0000:0x7E00
+  ```
 
 ## UEFI Boot
 
@@ -76,9 +105,10 @@ Para que el firmware UEFI detecte y ejecute correctamente el cargador de arranqu
 
 El bootloader utiliza los servicios de bajo nivel proporcionados por la BIOS a través de interrupciones de software para interactuar con el hardware.
 
-| Interrupción | Registro `AH` | Registro `BH` | Registro `AL`  | Descripción / Propósito                                                                                                                                           |
-| :----------- | :------------ | :------------ | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `int 0x10`   | `0x0E`        | `0x00`        | Carácter ASCII | **Modo Teletipo (TTY):** Imprime en pantalla el carácter almacenado en `AL`, avanza el cursor automáticamente y maneja saltos de línea en la página de video `0`. |
+| Interrupción | Registro `AH` | Registro `AL`               | Registros Extra                                                                                                                                      | Descripción / Propósito                                                                                                                                           |
+| :----------- | :------------ | :-------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `int 0x10`   | `0x0E`        | Carácter ASCII              | **`BH`** = Número de página de video                                                                                                                 | **Modo Teletipo (TTY):** Imprime en pantalla el carácter almacenado en `AL`, avanza el cursor automáticamente y maneja saltos de línea en la página de video `0`. |
+| `int 0x13`   | `0x02`        | Cantidad de sectores a leer | **`CH`** = Cilindro<br>**`CL`** = Sector de inicio<br>**`DH`** = Cabezal / Head<br>**`DL`** = Unidad de disco<br>**`BX`** = Offset de destino en RAM | **Lectura de Disco:** Lee sectores físicos desde el almacenamiento secundario y los carga en la dirección de memoria especificada por `ES:BX`.                    |
 
 ## Servicios de la SystemTable (UEFI)
 
