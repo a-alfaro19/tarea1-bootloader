@@ -27,8 +27,8 @@ directories:
 $(LEGACY_BIN): src/boot_legacy.asm
 	$(ASM) -f bin src/boot_legacy.asm -o $(LEGACY_BIN)
 
-$(LEGACY_APP): src/app_legacy.asm
-	$(ASM) -f bin src/app_legacy.asm -o $(LEGACY_APP)
+$(LEGACY_APP): src/app_legacy.asm src/video.inc src/teclado.inc src/rtc.inc src/cronometro.inc src/alarma.inc
+	$(ASM) -f bin -i src/ src/app_legacy.asm -o $(LEGACY_APP)
 
 # Crear imagen de disco virtual concatenando el MBR (sector 0) y la App (sector 1)
 $(LEGACY_IMG): $(LEGACY_BIN) $(LEGACY_APP)

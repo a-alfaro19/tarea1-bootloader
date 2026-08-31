@@ -26,5 +26,13 @@ app_hang:
 ; --- Datos de la Aplicación ---
 app_msg db 0x0D, 0x0A, "=== Hola desde la aplicacion Dummy cargada con exito! ===", 0x0D, 0x0A, 0
 
+; --- Módulos de la aplicación (reloj/cronómetro/alarma) ---
+; Aún sin uso desde app_start; se integran en las siguientes fases del plan.
+%include "video.inc"
+%include "teclado.inc"
+%include "rtc.inc"
+%include "cronometro.inc"
+%include "alarma.inc"
+
 ; Rellenar el sector de la aplicación para que ocupe exactamente 512 bytes (1 sector)
 times 510-($-$$) db 0
