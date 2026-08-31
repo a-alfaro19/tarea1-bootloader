@@ -24,10 +24,10 @@ directories:
 # 1. Modo Legacy (MBR - 512 bytes)
 # ------------------------------------------------------------------------------
 
-$(LEGACY_BIN): src/boot_legacy.asm
+$(LEGACY_BIN): src/boot_legacy.asm | directories
 	$(ASM) -f bin src/boot_legacy.asm -o $(LEGACY_BIN)
 
-$(LEGACY_APP): src/app_legacy.asm src/video.inc src/teclado.inc src/rtc.inc src/cronometro.inc src/alarma.inc
+$(LEGACY_APP): src/app_legacy.asm src/video.inc src/teclado.inc src/rtc.inc src/cronometro.inc src/alarma.inc | directories
 	$(ASM) -f bin -i src/ src/app_legacy.asm -o $(LEGACY_APP)
 
 # Crear imagen de disco virtual concatenando el MBR (sector 0) y la App (sector 1)
