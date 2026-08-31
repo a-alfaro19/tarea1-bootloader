@@ -39,7 +39,10 @@ load_application:
     mov es, ax           ; Asegurar ES = 0 para la dirección de destino
 
     mov ah, 0x02         ; Función 0x02: Leer sectores del disco
-    mov al, 0x01         ; Número de sectores a leer (1 sector = 512 bytes)
+    mov al, 0x03         ; Número de sectores a leer: 3 (1536 bytes). La app
+                          ; ya no cabe en 1 solo sector (reloj+cronometro+alarma);
+                          ; debe coincidir con el tamaño reservado al final de
+                          ; app_legacy.asm y con el "count" del dd en el Makefile.
     mov ch, 0x00         ; Cilindro 0
     mov cl, 0x02         ; Sector 2 (el sector 1 es nuestro MBR)
     mov dh, 0x00         ; Cabezal (Head) 0

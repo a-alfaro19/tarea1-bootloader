@@ -10,3 +10,21 @@ leer_tecla_bloqueante:
     mov ah, 0x00
     int 0x16
     ret
+
+; leer_tecla_no_bloqueante
+; Revisa si hay una tecla en el buffer sin detener la ejecución (necesario en
+; el loop principal, que debe seguir refrescando reloj/cronómetro aunque no
+; se presione nada).
+; Salida: CF=1 y AL=ASCII si había una tecla disponible (se consume del buffer);
+;         CF=0 si no había ninguna (AL queda indefinido).
+leer_tecla_no_bloqueante:
+    mov ah, 0x01
+    int 0x16
+    jz .sin_tecla        ; ZF=1: el BIOS reporta el buffer de teclado vacío
+    mov ah, 0x00          ; había tecla: consumirla del buffer para no releerla
+    int 0x16
+    stc
+    ret
+.sin_tecla:
+    clc
+    ret

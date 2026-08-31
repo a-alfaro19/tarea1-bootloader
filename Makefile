@@ -34,7 +34,7 @@ $(LEGACY_APP): src/app_legacy.asm src/video.inc src/teclado.inc src/rtc.inc src/
 $(LEGACY_IMG): $(LEGACY_BIN) $(LEGACY_APP)
 	dd if=/dev/zero of=$(LEGACY_IMG) bs=512 count=2880
 	dd if=$(LEGACY_BIN) of=$(LEGACY_IMG) conv=notrunc bs=512 count=1 seek=0
-	dd if=$(LEGACY_APP) of=$(LEGACY_IMG) conv=notrunc bs=512 count=1 seek=1
+	dd if=$(LEGACY_APP) of=$(LEGACY_IMG) conv=notrunc bs=512 count=3 seek=1
 
 # ------------------------------------------------------------------------------
 # 2. Modo UEFI (Ejecutable PE32+ y Partición FAT32 ESP)
