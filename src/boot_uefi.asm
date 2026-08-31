@@ -8,6 +8,8 @@ default rel          ; Habilitar el direccionamiento relativo a RIP por defecto 
 extern limpiar_pantalla
 extern imprimir_en
 extern esperar_enter
+extern leer_hora
+extern formatear_hora
 
 section .text
 global efi_main
@@ -24,6 +26,9 @@ efi_main:
     push r14
     sub rsp, 40      ; 32 bytes de shadow space (mínimo x64) + 8 de relleno
                       ; para mantener RSP alineado a 16 bytes antes de cada call
+    cld              ; DF=0: la convención x64 ya lo exige al entrar a una
+                      ; función, pero se deja explícito porque rtc_uefi.asm
+                      ; usa "stosw" para formatear la hora.
 
     ; --- Guardar parámetros de UEFI ---
     ; RCX contiene el ImageHandle, y RDX contiene el puntero a la SystemTable.
@@ -62,8 +67,8 @@ efi_main:
     call esperar_enter
 
     ; ==========================================================================
-    ; 3. Confirmado: placeholder del modo interactivo. El modo Reloj llega en
-    ; la Fase UEFI-2 y el resto en las siguientes (ver docs/plan.md).
+    ; 3. Confirmado: entra al modo Reloj. El cronómetro, cambio de modo y
+    ; alarma llegan en las siguientes fases (ver docs/plan.md).
     ; ==========================================================================
     ; Se vuelve a leer ConOut de SystemTable (en vez de confiar en que R13
     ; sobrevivió intacto el loop de espera de esperar_enter, que puede
@@ -73,13 +78,38 @@ efi_main:
     call limpiar_pantalla
 
     mov rcx, r13
-    mov rdx, 20
-    mov r8, 10
-    lea r9, [rel modo_interactivo_msg]
+    mov rdx, 31
+    mov r8, 5
+    lea r9, [rel reloj_titulo]
     call imprimir_en
 
+    mov byte [rel ultimo_segundo], 0xFF   ; fuerza el primer dibujo
+
+reloj_loop:
+    mov rcx, r12
+    lea rdx, [rel hora_efi_time]
+    call leer_hora
+
+    movzx eax, byte [rel hora_efi_time + 6]  ; Second recién leído
+    cmp al, [rel ultimo_segundo]
+    je reloj_loop                              ; mismo segundo, no redibujar (evita parpadeo)
+    mov [rel ultimo_segundo], al
+
+    lea rsi, [rel hora_efi_time]
+    lea rdi, [rel hora_buffer]
+    call formatear_hora
+
+    mov rcx, r13
+    mov rdx, 36
+    mov r8, 7
+    lea r9, [rel hora_buffer]
+    call imprimir_en
+
+    jmp reloj_loop
+
     ; ==========================================================================
-    ; 4. Salida limpia y retorno al firmware UEFI
+    ; 4. Salida limpia y retorno al firmware UEFI (inalcanzable por ahora:
+    ; reloj_loop es infinito hasta que la Fase UEFI-5 agregue la tecla Esc)
     ; ==========================================================================
     xor rax, rax     ; EFI_SUCCESS
     add rsp, 40
@@ -96,4 +126,7 @@ section .data
 bienvenida_linea1    dw __utf16__("=== Reloj / Cronometro con Alarma ==="), 0
 bienvenida_linea2    dw __utf16__("Tarea 1 - CE 4303"), 0
 bienvenida_prompt    dw __utf16__("Presione ENTER para continuar..."), 0
-modo_interactivo_msg dw __utf16__("Confirmado. (modo interactivo: pendiente)"), 0
+reloj_titulo         dw __utf16__("-- Modo Reloj --"), 0
+ultimo_segundo       db 0xFF               ; Segundo ya dibujado; 0xFF fuerza el primer dibujo
+hora_efi_time         times 16 db 0          ; EFI_TIME devuelto por GetTime (ver rtc_uefi.asm)
+hora_buffer            times 18 db 0           ; "HH:MM:SS" + nulo, en UTF-16 (9 CHAR16 = 18 bytes)

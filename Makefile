@@ -76,9 +76,12 @@ run-legacy: $(LEGACY_IMG)
 	$(QEMU) -drive format=raw,file=$(LEGACY_IMG) -rtc base=localtime
 
 # Ejecutar en Modo UEFI (Requiere firmware OVMF instalado en el sistema)
+# -rtc base=localtime: GetTime() de UEFI lee el mismo RTC/CMOS virtual que el
+# BIOS legacy, con el mismo problema de UTC por defecto (ver run-legacy).
 run-uefi: $(UEFI_IMG)
 	$(QEMU) -bios /usr/share/ovmf/OVMF.fd \
 	        -drive format=raw,file=$(UEFI_IMG) \
+	        -rtc base=localtime \
 	        -net none
 
 # ------------------------------------------------------------------------------
