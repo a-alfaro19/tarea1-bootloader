@@ -5,6 +5,7 @@ QEMU = qemu-system-x86_64
 # Archivos de salida
 BUILD_DIR = build
 LEGACY_BIN = $(BUILD_DIR)/boot_legacy.bin
+LEGACY_APP = $(BUILD_DIR)/app_legacy.bin
 LEGACY_IMG = $(BUILD_DIR)/disk_legacy.img
 UEFI_BIN = $(BUILD_DIR)/BOOTX64.EFI
 UEFI_IMG = $(BUILD_DIR)/disk_uefi.img
@@ -26,10 +27,14 @@ directories:
 $(LEGACY_BIN): src/boot_legacy.asm
 	$(ASM) -f bin src/boot_legacy.asm -o $(LEGACY_BIN)
 
-# Crear imagen de disco virtual de 1.44MB o sector exacto con el MBR
-$(LEGACY_IMG): $(LEGACY_BIN)
+$(LEGACY_APP): src/app_legacy.asm
+	$(ASM) -f bin src/app_legacy.asm -o $(LEGACY_APP)
+
+# Crear imagen de disco virtual concatenando el MBR (sector 0) y la App (sector 1)
+$(LEGACY_IMG): $(LEGACY_BIN) $(LEGACY_APP)
 	dd if=/dev/zero of=$(LEGACY_IMG) bs=512 count=2880
-	dd if=$(LEGACY_BIN) of=$(LEGACY_IMG) conv=notrunc bs=512 count=1
+	dd if=$(LEGACY_BIN) of=$(LEGACY_IMG) conv=notrunc bs=512 count=1 seek=0
+	dd if=$(LEGACY_APP) of=$(LEGACY_IMG) conv=notrunc bs=512 count=1 seek=1
 
 # ------------------------------------------------------------------------------
 # 2. Modo UEFI (Ejecutable PE32+ y Partición FAT32 ESP)
