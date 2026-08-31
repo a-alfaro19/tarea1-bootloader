@@ -1,22 +1,41 @@
 ; ==============================================================================
-; Aplicación Dummy en Modo Legacy (Se ejecuta en 0x7E00)
+; Aplicación de Reloj/Cronómetro con Alarma (Modo Legacy, se ejecuta en 0x7E00)
 ; ==============================================================================
 
 [org 0x7E00]
 
+KEY_ENTER equ 0x0D           ; Tecla que confirma la pantalla inicial
+
 app_start:
-    ; Cargar la dirección del mensaje de la aplicación en SI
-    mov si, app_msg
+    call limpiar_pantalla
 
-app_print_loop:
-    lodsb                ; Cargar byte de [SI] en AL
-    or al, al            ; Verificar si es fin de cadena (0)
-    jz app_hang          ; Si es cero, terminar bucle
+    mov dh, 8
+    mov dl, 21
+    mov si, bienvenida_linea1
+    call imprimir_en
 
-    mov ah, 0x0E         ; Función teletipo de la BIOS
-    mov bh, 0x00         ; Página de video 0
-    int 0x10             ; Imprimir carácter
-    jmp app_print_loop
+    mov dh, 9
+    mov dl, 31
+    mov si, bienvenida_linea2
+    call imprimir_en
+
+    mov dh, 11
+    mov dl, 24
+    mov si, bienvenida_prompt
+    call imprimir_en
+
+esperar_confirmacion:
+    call leer_tecla_bloqueante
+    cmp al, KEY_ENTER
+    jne esperar_confirmacion
+
+    ; Confirmado. Placeholder del modo interactivo: los modos Reloj y
+    ; Cronómetro se integran en las siguientes fases del plan (docs/plan.md).
+    call limpiar_pantalla
+    mov dh, 10
+    mov dl, 20
+    mov si, modo_interactivo_msg
+    call imprimir_en
 
 app_hang:
     cli
@@ -24,10 +43,12 @@ app_hang:
     jmp app_hang
 
 ; --- Datos de la Aplicación ---
-app_msg db 0x0D, 0x0A, "=== Hola desde la aplicacion Dummy cargada con exito! ===", 0x0D, 0x0A, 0
+bienvenida_linea1    db "=== Reloj / Cronometro con Alarma ===", 0
+bienvenida_linea2    db "Tarea 1 - CE 4303", 0
+bienvenida_prompt    db "Presione ENTER para continuar...", 0
+modo_interactivo_msg db "Confirmado. (modo interactivo: pendiente)", 0
 
 ; --- Módulos de la aplicación (reloj/cronómetro/alarma) ---
-; Aún sin uso desde app_start; se integran en las siguientes fases del plan.
 %include "video.inc"
 %include "teclado.inc"
 %include "rtc.inc"
