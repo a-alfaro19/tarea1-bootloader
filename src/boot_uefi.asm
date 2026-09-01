@@ -15,6 +15,9 @@ extern crono_iniciar_pausar_reanudar
 extern crono_reiniciar
 extern crono_segundos_transcurridos
 extern formatear_cronometro
+extern alarma_configurar
+extern alarma_actualizar
+extern alarma_cancelar
 
 KEY_ESC         equ 0x1B      ; UnicodeChar de Escape (si viene como texto)
 SCAN_ESC        equ 0x17      ; EFI_SCAN_CODE_ESC: el teclado UEFI puede reportarlo
@@ -98,6 +101,12 @@ efi_main:
     lea r9, [rel controles_msg]
     call imprimir_en
 
+    mov rcx, r13
+    mov rdx, 10
+    mov r8, 21
+    lea r9, [rel controles_msg2]
+    call imprimir_en
+
 loop_principal:
     mov rcx, r14
     lea rdx, [rel tecla_loop_buffer]
@@ -125,6 +134,14 @@ loop_principal:
     je .tecla_reset
     cmp eax, 'r'
     je .tecla_reset
+    cmp eax, 'A'
+    je .tecla_alarma
+    cmp eax, 'a'
+    je .tecla_alarma
+    cmp eax, 'C'
+    je .tecla_cancelar_alarma
+    cmp eax, 'c'
+    je .tecla_cancelar_alarma
     cmp eax, KEY_ESC
     je .tecla_salir
     jmp .revisar_modo
@@ -141,6 +158,11 @@ loop_principal:
     mov r8, 20
     lea r9, [rel controles_msg]
     call imprimir_en
+    mov rcx, r13
+    mov rdx, 10
+    mov r8, 21
+    lea r9, [rel controles_msg2]
+    call imprimir_en
     jmp loop_principal
 
 .tecla_start:
@@ -151,6 +173,37 @@ loop_principal:
 .tecla_reset:
     call crono_reiniciar
     mov dword [rel crono_ultimo_segundos], 0xFFFFFFFF  ; fuerza redibujar a 00:00
+    jmp loop_principal
+
+.tecla_alarma:
+    mov rcx, r12
+    call alarma_configurar
+
+    ; alarma_configurar dibuja su propia pantalla de captura; redibujar la
+    ; pantalla principal (título + controles) al volver, mismo patrón que
+    ; .tecla_modo. Se vuelve a leer ConOut de SystemTable por si acaso, igual
+    ; que tras esperar_enter en la confirmación inicial.
+    mov r13, [r12 + 64]
+    mov rcx, r13
+    call limpiar_pantalla
+    mov byte [rel ultimo_segundo], 0xFF
+    mov dword [rel crono_ultimo_segundos], 0xFFFFFFFF
+    call dibujar_titulo_modo
+    mov rcx, r13
+    mov rdx, 10
+    mov r8, 20
+    lea r9, [rel controles_msg]
+    call imprimir_en
+    mov rcx, r13
+    mov rdx, 10
+    mov r8, 21
+    lea r9, [rel controles_msg2]
+    call imprimir_en
+    jmp loop_principal
+
+.tecla_cancelar_alarma:
+    mov rcx, r13
+    call alarma_cancelar
     jmp loop_principal
 
 .tecla_salir:
@@ -169,16 +222,23 @@ loop_principal:
     ret
 
 .revisar_modo:
+    ; Se lee GetTime() una vez por iteración, sin importar el modo: la alarma
+    ; debe seguir comparando contra la hora aunque el usuario esté viendo el
+    ; Cronómetro (ver docs/plan.md, Fase UEFI-4).
+    mov rcx, r12
+    lea rdx, [rel hora_efi_time]
+    call leer_hora
+
+    mov rcx, r13
+    lea rdx, [rel hora_efi_time]
+    call alarma_actualizar
+
     cmp byte [rel modo_actual], MODO_RELOJ
     je .actualizar_reloj
     jmp .actualizar_crono
 
 .actualizar_reloj:
-    mov rcx, r12
-    lea rdx, [rel hora_efi_time]
-    call leer_hora
-
-    movzx eax, byte [rel hora_efi_time + 6]  ; Second recién leído
+    movzx eax, byte [rel hora_efi_time + 6]  ; Second ya leído arriba
     cmp al, [rel ultimo_segundo]
     je loop_principal                          ; mismo segundo, no redibujar (evita parpadeo)
     mov [rel ultimo_segundo], al
@@ -258,6 +318,7 @@ bienvenida_prompt     dw __utf16__("Presione ENTER para continuar..."), 0
 reloj_titulo          dw __utf16__("-- Modo Reloj --"), 0
 crono_titulo          dw __utf16__("-- Modo Cronometro --"), 0
 controles_msg         dw __utf16__("M: modo | S: iniciar/pausar | R: reiniciar | Esc: salir"), 0
+controles_msg2        dw __utf16__("A: alarma | C: cancelar alarma"), 0
 salida_msg            dw __utf16__("Saliendo..."), 0
 modo_actual           db MODO_RELOJ
 ultimo_segundo        db 0xFF               ; Segundo ya dibujado; 0xFF fuerza el primer dibujo
