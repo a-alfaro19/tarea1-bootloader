@@ -1,7 +1,7 @@
 ; ==============================================================================
 ; video_uefi.asm — Helpers de pantalla sobre el protocolo ConOut
-; (EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL). Se completa en la Fase UEFI-2 con
-; set_atributo (parpadeo/color de la alarma, ver SPEC_UEFI.md §2).
+; (EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL). set_atributo se agrega en la Fase
+; UEFI-4 (parpadeo/color de la alarma, ver SPEC_UEFI.md §2).
 ;
 ; Convención de pila para las rutinas de una sola llamada (imprimir_string,
 ; limpiar_pantalla, set_cursor): a estas se entra siempre justo después de un
@@ -21,6 +21,7 @@ global imprimir_string
 global limpiar_pantalla
 global set_cursor
 global imprimir_en
+global set_atributo
 
 ; imprimir_string
 ; Entrada: RCX = puntero a ConOut (this), RDX = puntero a string UTF-16
@@ -49,6 +50,18 @@ limpiar_pantalla:
 set_cursor:
     sub rsp, 40
     call qword [rcx + 56]
+    add rsp, 40
+    ret
+
+; set_atributo
+; Entrada: RCX = ConOut (this), RDX = atributo (UINTN: FG | (BG << 4), mismos
+;          códigos de color VGA 0-15/0-7 que Legacy)
+; Envuelve ConOut->SetAttribute (offset +40). Afecta al texto impreso después
+; de la llamada, no repinta lo que ya está en pantalla — por eso la alarma
+; combina esto con volver a imprimir el aviso, no solo cambiar el atributo.
+set_atributo:
+    sub rsp, 40
+    call qword [rcx + 40]
     add rsp, 40
     ret
 
