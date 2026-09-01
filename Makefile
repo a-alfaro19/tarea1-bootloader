@@ -9,6 +9,8 @@ LEGACY_APP = $(BUILD_DIR)/app_legacy.bin
 LEGACY_IMG = $(BUILD_DIR)/disk_legacy.img
 UEFI_BIN = $(BUILD_DIR)/BOOTX64.EFI
 UEFI_IMG = $(BUILD_DIR)/disk_uefi.img
+UEFI_SRCS = src/boot_uefi.asm src/video_uefi.asm src/teclado_uefi.asm src/rtc_uefi.asm src/cronometro_uefi.asm src/alarma_uefi.asm
+UEFI_OBJS = $(UEFI_SRCS:src/%.asm=$(BUILD_DIR)/%.o)
 
 # ==============================================================================
 # Reglas Principales
@@ -40,10 +42,20 @@ $(LEGACY_IMG): $(LEGACY_BIN) $(LEGACY_APP)
 # 2. Modo UEFI (Ejecutable PE32+ y Partición FAT32 ESP)
 # ------------------------------------------------------------------------------
 
-# Compilar UEFI usando formato ELF y enlazador (ld)
-$(UEFI_BIN): src/boot_uefi.asm
-	nasm -f elf64 src/boot_uefi.asm -o build/boot_uefi.o
-	x86_64-w64-mingw32-ld -subsystem 10 -entry:efi_main build/boot_uefi.o -o $(UEFI_BIN)
+# Compilar cada módulo UEFI a objeto ELF64 por separado (regla patrón)
+$(BUILD_DIR)/%.o: src/%.asm | directories
+	nasm -f elf64 $< -o $@
+
+# Enlazar todos los objetos UEFI en un único ejecutable PE32+
+# --entry=efi_main (no "-entry:efi_main"): GNU ld no entiende la sintaxis de
+# dos puntos de MSVC link.exe. Con "-entry:efi_main" el parser de opciones
+# cortas de ld lo lee como "-e" + argumento "ntry:efi_main", así que buscaba
+# un símbolo de entrada llamado literalmente "ntry:efi_main" y caía a un
+# punto de entrada por defecto en vez de efi_main (bug preexistente, nunca
+# se notó porque en el binario de un solo módulo el entry point por defecto
+# coincidía por casualidad con el inicio real de efi_main).
+$(UEFI_BIN): $(UEFI_OBJS) | directories
+	x86_64-w64-mingw32-ld -subsystem 10 --entry=efi_main $(UEFI_OBJS) -o $(UEFI_BIN)
 
 # Crear imagen de disco FAT32 (ESP) y empaquetar el binario en la estructura requerida
 $(UEFI_IMG): $(UEFI_BIN)
@@ -64,9 +76,12 @@ run-legacy: $(LEGACY_IMG)
 	$(QEMU) -drive format=raw,file=$(LEGACY_IMG) -rtc base=localtime
 
 # Ejecutar en Modo UEFI (Requiere firmware OVMF instalado en el sistema)
+# -rtc base=localtime: GetTime() de UEFI lee el mismo RTC/CMOS virtual que el
+# BIOS legacy, con el mismo problema de UTC por defecto (ver run-legacy).
 run-uefi: $(UEFI_IMG)
 	$(QEMU) -bios /usr/share/ovmf/OVMF.fd \
 	        -drive format=raw,file=$(UEFI_IMG) \
+	        -rtc base=localtime \
 	        -net none
 
 # ------------------------------------------------------------------------------
