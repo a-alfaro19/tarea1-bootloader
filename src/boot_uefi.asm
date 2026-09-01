@@ -16,6 +16,8 @@ extern crono_reiniciar
 extern crono_segundos_transcurridos
 extern formatear_cronometro
 
+KEY_ESC         equ 0x1B      ; UnicodeChar de Escape (si viene como texto)
+SCAN_ESC        equ 0x17      ; EFI_SCAN_CODE_ESC: el teclado UEFI puede reportarlo
 MODO_RELOJ      equ 0
 MODO_CRONOMETRO equ 1
 
@@ -91,7 +93,7 @@ efi_main:
     call dibujar_titulo_modo
 
     mov rcx, r13
-    mov rdx, 19
+    mov rdx, 10
     mov r8, 20
     lea r9, [rel controles_msg]
     call imprimir_en
@@ -102,6 +104,13 @@ loop_principal:
     call leer_tecla_no_bloqueante
     cmp rax, 0
     jne .revisar_modo                ; no había tecla
+
+    ; EFI_INPUT_KEY usa dos campos: ScanCode + UnicodeChar. Escape suele venir
+    ; como scan code (0x17) y no siempre como UnicodeChar (0x1B), por eso se
+    ; comprobam ambos para que el atajo funcione en firmware UEFI real.
+    movzx eax, word [rel tecla_loop_buffer]       ; ScanCode
+    cmp eax, SCAN_ESC
+    je .tecla_salir
 
     movzx eax, word [rel tecla_loop_buffer + 2]  ; UnicodeChar
     cmp eax, 'M'
@@ -116,6 +125,8 @@ loop_principal:
     je .tecla_reset
     cmp eax, 'r'
     je .tecla_reset
+    cmp eax, KEY_ESC
+    je .tecla_salir
     jmp .revisar_modo
 
 .tecla_modo:
@@ -126,7 +137,7 @@ loop_principal:
     mov dword [rel crono_ultimo_segundos], 0xFFFFFFFF
     call dibujar_titulo_modo
     mov rcx, r13
-    mov rdx, 19
+    mov rdx, 10
     mov r8, 20
     lea r9, [rel controles_msg]
     call imprimir_en
@@ -141,6 +152,21 @@ loop_principal:
     call crono_reiniciar
     mov dword [rel crono_ultimo_segundos], 0xFFFFFFFF  ; fuerza redibujar a 00:00
     jmp loop_principal
+
+.tecla_salir:
+    mov rcx, r13
+    mov rdx, 31
+    mov r8, 22
+    lea r9, [rel salida_msg]
+    call imprimir_en
+
+    xor rax, rax
+    add rsp, 40
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    ret
 
 .revisar_modo:
     cmp byte [rel modo_actual], MODO_RELOJ
@@ -231,7 +257,8 @@ bienvenida_linea2     dw __utf16__("Tarea 1 - CE 4303"), 0
 bienvenida_prompt     dw __utf16__("Presione ENTER para continuar..."), 0
 reloj_titulo          dw __utf16__("-- Modo Reloj --"), 0
 crono_titulo          dw __utf16__("-- Modo Cronometro --"), 0
-controles_msg         dw __utf16__("M: modo | S: iniciar/pausar | R: reiniciar"), 0
+controles_msg         dw __utf16__("M: modo | S: iniciar/pausar | R: reiniciar | Esc: salir"), 0
+salida_msg            dw __utf16__("Saliendo..."), 0
 modo_actual           db MODO_RELOJ
 ultimo_segundo        db 0xFF               ; Segundo ya dibujado; 0xFF fuerza el primer dibujo
 crono_ultimo_segundos  dd 0xFFFFFFFF          ; Segundos ya dibujados del cronómetro; fuerza el primero
