@@ -8,8 +8,16 @@ default rel          ; Habilitar el direccionamiento relativo a RIP por defecto 
 extern limpiar_pantalla
 extern imprimir_en
 extern esperar_enter
+extern leer_tecla_no_bloqueante
 extern leer_hora
 extern formatear_hora
+extern crono_iniciar_pausar_reanudar
+extern crono_reiniciar
+extern crono_segundos_transcurridos
+extern formatear_cronometro
+
+MODO_RELOJ      equ 0
+MODO_CRONOMETRO equ 1
 
 section .text
 global efi_main
@@ -67,8 +75,8 @@ efi_main:
     call esperar_enter
 
     ; ==========================================================================
-    ; 3. Confirmado: entra al modo Reloj. El cronómetro, cambio de modo y
-    ; alarma llegan en las siguientes fases (ver docs/plan.md).
+    ; 3. Confirmado: entra al modo interactivo (Reloj por defecto). La
+    ; alarma llega en la siguiente fase (ver docs/plan.md).
     ; ==========================================================================
     ; Se vuelve a leer ConOut de SystemTable (en vez de confiar en que R13
     ; sobrevivió intacto el loop de espera de esperar_enter, que puede
@@ -77,22 +85,76 @@ efi_main:
     mov rcx, r13
     call limpiar_pantalla
 
+    mov byte [rel modo_actual], MODO_RELOJ
+    mov byte [rel ultimo_segundo], 0xFF
+    mov dword [rel crono_ultimo_segundos], 0xFFFFFFFF
+    call dibujar_titulo_modo
+
     mov rcx, r13
-    mov rdx, 31
-    mov r8, 5
-    lea r9, [rel reloj_titulo]
+    mov rdx, 19
+    mov r8, 20
+    lea r9, [rel controles_msg]
     call imprimir_en
 
-    mov byte [rel ultimo_segundo], 0xFF   ; fuerza el primer dibujo
+loop_principal:
+    mov rcx, r14
+    lea rdx, [rel tecla_loop_buffer]
+    call leer_tecla_no_bloqueante
+    cmp rax, 0
+    jne .revisar_modo                ; no había tecla
 
-reloj_loop:
+    movzx eax, word [rel tecla_loop_buffer + 2]  ; UnicodeChar
+    cmp eax, 'M'
+    je .tecla_modo
+    cmp eax, 'm'
+    je .tecla_modo
+    cmp eax, 'S'
+    je .tecla_start
+    cmp eax, 's'
+    je .tecla_start
+    cmp eax, 'R'
+    je .tecla_reset
+    cmp eax, 'r'
+    je .tecla_reset
+    jmp .revisar_modo
+
+.tecla_modo:
+    xor byte [rel modo_actual], 1     ; alterna 0 <-> 1 (MODO_RELOJ/MODO_CRONOMETRO)
+    mov rcx, r13
+    call limpiar_pantalla
+    mov byte [rel ultimo_segundo], 0xFF
+    mov dword [rel crono_ultimo_segundos], 0xFFFFFFFF
+    call dibujar_titulo_modo
+    mov rcx, r13
+    mov rdx, 19
+    mov r8, 20
+    lea r9, [rel controles_msg]
+    call imprimir_en
+    jmp loop_principal
+
+.tecla_start:
+    mov rcx, r12
+    call crono_iniciar_pausar_reanudar
+    jmp loop_principal
+
+.tecla_reset:
+    call crono_reiniciar
+    mov dword [rel crono_ultimo_segundos], 0xFFFFFFFF  ; fuerza redibujar a 00:00
+    jmp loop_principal
+
+.revisar_modo:
+    cmp byte [rel modo_actual], MODO_RELOJ
+    je .actualizar_reloj
+    jmp .actualizar_crono
+
+.actualizar_reloj:
     mov rcx, r12
     lea rdx, [rel hora_efi_time]
     call leer_hora
 
     movzx eax, byte [rel hora_efi_time + 6]  ; Second recién leído
     cmp al, [rel ultimo_segundo]
-    je reloj_loop                              ; mismo segundo, no redibujar (evita parpadeo)
+    je loop_principal                          ; mismo segundo, no redibujar (evita parpadeo)
     mov [rel ultimo_segundo], al
 
     lea rsi, [rel hora_efi_time]
@@ -104,12 +166,53 @@ reloj_loop:
     mov r8, 7
     lea r9, [rel hora_buffer]
     call imprimir_en
+    jmp loop_principal
 
-    jmp reloj_loop
+.actualizar_crono:
+    mov rcx, r12
+    call crono_segundos_transcurridos    ; eax = segundos totales
+
+    cmp eax, [rel crono_ultimo_segundos]
+    je loop_principal                      ; mismo segundo, no redibujar
+    mov [rel crono_ultimo_segundos], eax
+
+    xor edx, edx
+    mov ecx, 60
+    div ecx                                  ; eax = minutos, edx = segundos
+
+    lea rdi, [rel crono_buffer]
+    call formatear_cronometro
+
+    mov rcx, r13
+    mov rdx, 37
+    mov r8, 7
+    lea r9, [rel crono_buffer]
+    call imprimir_en
+    jmp loop_principal
+
+; dibujar_titulo_modo
+; Imprime el título correspondiente al modo actual en la fila 5. Local a
+; este archivo (usa R13 ya cargado en efi_main, no un puntero propio).
+dibujar_titulo_modo:
+    cmp byte [rel modo_actual], MODO_RELOJ
+    je .reloj
+    mov rcx, r13
+    mov rdx, 29
+    mov r8, 5
+    lea r9, [rel crono_titulo]
+    call imprimir_en
+    ret
+.reloj:
+    mov rcx, r13
+    mov rdx, 31
+    mov r8, 5
+    lea r9, [rel reloj_titulo]
+    call imprimir_en
+    ret
 
     ; ==========================================================================
     ; 4. Salida limpia y retorno al firmware UEFI (inalcanzable por ahora:
-    ; reloj_loop es infinito hasta que la Fase UEFI-5 agregue la tecla Esc)
+    ; loop_principal es infinito hasta que la Fase UEFI-5 agregue la tecla Esc)
     ; ==========================================================================
     xor rax, rax     ; EFI_SUCCESS
     add rsp, 40
@@ -123,10 +226,16 @@ reloj_loop:
 ; Sección de Datos Estáticos
 ; ==============================================================================
 section .data
-bienvenida_linea1    dw __utf16__("=== Reloj / Cronometro con Alarma ==="), 0
-bienvenida_linea2    dw __utf16__("Tarea 1 - CE 4303"), 0
-bienvenida_prompt    dw __utf16__("Presione ENTER para continuar..."), 0
-reloj_titulo         dw __utf16__("-- Modo Reloj --"), 0
-ultimo_segundo       db 0xFF               ; Segundo ya dibujado; 0xFF fuerza el primer dibujo
-hora_efi_time         times 16 db 0          ; EFI_TIME devuelto por GetTime (ver rtc_uefi.asm)
-hora_buffer            times 18 db 0           ; "HH:MM:SS" + nulo, en UTF-16 (9 CHAR16 = 18 bytes)
+bienvenida_linea1     dw __utf16__("=== Reloj / Cronometro con Alarma ==="), 0
+bienvenida_linea2     dw __utf16__("Tarea 1 - CE 4303"), 0
+bienvenida_prompt     dw __utf16__("Presione ENTER para continuar..."), 0
+reloj_titulo          dw __utf16__("-- Modo Reloj --"), 0
+crono_titulo          dw __utf16__("-- Modo Cronometro --"), 0
+controles_msg         dw __utf16__("M: modo | S: iniciar/pausar | R: reiniciar"), 0
+modo_actual           db MODO_RELOJ
+ultimo_segundo        db 0xFF               ; Segundo ya dibujado; 0xFF fuerza el primer dibujo
+crono_ultimo_segundos  dd 0xFFFFFFFF          ; Segundos ya dibujados del cronómetro; fuerza el primero
+hora_efi_time           times 16 db 0           ; EFI_TIME devuelto por GetTime (ver rtc_uefi.asm)
+hora_buffer              times 18 db 0            ; "HH:MM:SS" + nulo, UTF-16 (9 CHAR16 = 18 bytes)
+crono_buffer              times 12 db 0             ; "MM:SS" + nulo, UTF-16 (6 CHAR16 = 12 bytes)
+tecla_loop_buffer          times 4 db 0               ; EFI_INPUT_KEY del loop principal (no bloqueante)
