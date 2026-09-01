@@ -5,12 +5,20 @@
 [org 0x7E00]
 
 KEY_ENTER       equ 0x0D      ; Tecla que confirma la pantalla inicial
+KEY_ESC         equ 0x1B      ; Tecla para salir de la aplicación
 MODO_RELOJ      equ 0
 MODO_CRONOMETRO equ 1
 
 app_start:
     cld                   ; Asegura DF=0 para lodsb/stosb; el BIOS normalmente
                           ; ya lo deja así, pero no está garantizado en todo hardware.
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7B00
+    mov [boot_drive_guard], dl   ; conserva el drive original del BIOS antes de
+                                ; invocar BIOS/INTs que pueden reutilizar DL
     call limpiar_pantalla
 
     mov dh, 8
@@ -43,7 +51,7 @@ interactivo:
     call dibujar_titulo_modo
 
     mov dh, 20
-    mov dl, 19
+    mov dl, 10
     mov si, controles_msg
     call imprimir_en
 
@@ -63,6 +71,8 @@ loop_principal:
     je .tecla_reset
     cmp al, 'r'
     je .tecla_reset
+    cmp al, KEY_ESC
+    je .tecla_salir
     jmp .revisar_modo
 
 .tecla_modo:
@@ -72,7 +82,7 @@ loop_principal:
     mov word [crono_ultimo_segundos], 0xFFFF
     call dibujar_titulo_modo
     mov dh, 20
-    mov dl, 19
+    mov dl, 10
     mov si, controles_msg
     call imprimir_en
     jmp loop_principal
@@ -85,6 +95,28 @@ loop_principal:
     call crono_reiniciar
     mov word [crono_ultimo_segundos], 0xFFFF  ; fuerza redibujar a 00:00
     jmp loop_principal
+
+.tecla_salir:
+    mov dh, 22
+    mov dl, 31
+    mov si, salida_msg
+    call imprimir_en
+
+    ; Reanudar el valor original del drive para que el MBR vuelva a cargar la
+    ; app sin fallar por un DL ya contaminado.
+    mov dl, [boot_drive_guard]
+
+    ; Reiniciar el estado del modo real y limpiar la pantalla antes de volver al
+    ; bootloader, para que el mensaje de bienvenida vuelva a mostrarse limpio.
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7B00
+    mov ah, 0x00
+    mov al, 0x03
+    int 0x10
+    jmp 0x0000:0x7C00
 
 .revisar_modo:
     cmp byte [modo_actual], MODO_RELOJ
@@ -154,12 +186,14 @@ bienvenida_linea2      db "Tarea 1 - CE 4303", 0
 bienvenida_prompt      db "Presione ENTER para continuar...", 0
 reloj_titulo           db "-- Modo Reloj --", 0
 crono_titulo           db "-- Modo Cronometro --", 0
-controles_msg          db "M: modo | S: iniciar/pausar | R: reiniciar", 0
+controles_msg          db "M: modo | S: iniciar/pausar | R: reiniciar | Esc: salir", 0
+salida_msg             db "Saliendo...", 0
 modo_actual            db MODO_RELOJ
 ultimo_segundo         db 0xFF          ; Segundo BCD ya dibujado; 0xFF fuerza el primer dibujo
 crono_ultimo_segundos  dw 0xFFFF        ; Segundos ya dibujados del cronómetro; 0xFFFF fuerza el primero
 hora_buffer            times 9 db 0     ; "HH:MM:SS", 0
 crono_buffer           times 6 db 0     ; "MM:SS", 0
+boot_drive_guard       db 0
 
 ; --- Módulos de la aplicación (reloj/cronómetro/alarma) ---
 %include "video.inc"

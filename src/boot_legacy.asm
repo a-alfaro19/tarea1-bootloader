@@ -11,7 +11,7 @@ start:
     mov ds, ax         ; Data Segment = 0
     mov es, ax         ; Extra Segment = 0
     mov ss, ax         ; Stack Segment = 0
-    mov sp, 0x7C00     ; La pila crece hacia abajo desde la dirección de inicio
+    mov sp, 0x7B00     ; La pila vive por debajo del MBR para no clobberar el código del bootloader
     sti                ; Rehabilitar interrupciones
 
     ; Guardar el número de unidad (drive number) que la BIOS pasa en DL
