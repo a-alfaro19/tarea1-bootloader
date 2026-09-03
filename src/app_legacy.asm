@@ -55,6 +55,11 @@ interactivo:
     mov si, controles_msg
     call imprimir_en
 
+    mov dh, 21
+    mov dl, 10
+    mov si, controles_msg2
+    call imprimir_en
+
 loop_principal:
     call leer_tecla_no_bloqueante
     jnc .revisar_modo
@@ -71,6 +76,14 @@ loop_principal:
     je .tecla_reset
     cmp al, 'r'
     je .tecla_reset
+    cmp al, 'A'
+    je .tecla_alarma
+    cmp al, 'a'
+    je .tecla_alarma
+    cmp al, 'C'
+    je .tecla_cancelar_alarma
+    cmp al, 'c'
+    je .tecla_cancelar_alarma
     cmp al, KEY_ESC
     je .tecla_salir
     jmp .revisar_modo
@@ -85,6 +98,10 @@ loop_principal:
     mov dl, 10
     mov si, controles_msg
     call imprimir_en
+    mov dh, 21
+    mov dl, 10
+    mov si, controles_msg2
+    call imprimir_en
     jmp loop_principal
 
 .tecla_start:
@@ -94,6 +111,30 @@ loop_principal:
 .tecla_reset:
     call crono_reiniciar
     mov word [crono_ultimo_segundos], 0xFFFF  ; fuerza redibujar a 00:00
+    jmp loop_principal
+
+.tecla_alarma:
+    call alarma_configurar
+
+    ; alarma_configurar dibuja su propia pantalla de captura; al volver hay
+    ; que redibujar la pantalla principal (título + controles), mismo patrón
+    ; que .tecla_modo.
+    call limpiar_pantalla
+    mov byte [ultimo_segundo], 0xFF
+    mov word [crono_ultimo_segundos], 0xFFFF
+    call dibujar_titulo_modo
+    mov dh, 20
+    mov dl, 10
+    mov si, controles_msg
+    call imprimir_en
+    mov dh, 21
+    mov dl, 10
+    mov si, controles_msg2
+    call imprimir_en
+    jmp loop_principal
+
+.tecla_cancelar_alarma:
+    call alarma_cancelar
     jmp loop_principal
 
 .tecla_salir:
@@ -119,12 +160,16 @@ loop_principal:
     jmp 0x0000:0x7C00
 
 .revisar_modo:
+    ; Se lee el RTC una vez por iteración, sin importar el modo: la alarma
+    ; debe seguir comparando aunque el usuario esté viendo el Cronómetro.
+    call leer_hora_rtc              ; CH=hora, CL=minutos, DH=segundos (BCD)
+    call alarma_actualizar          ; usa CH/CL/DH ya leídos; no los modifica
+
     cmp byte [modo_actual], MODO_RELOJ
     je .actualizar_reloj
     jmp .actualizar_crono
 
 .actualizar_reloj:
-    call leer_hora_rtc              ; CH=hora, CL=minutos, DH=segundos (BCD)
     cmp dh, [ultimo_segundo]
     je loop_principal                ; mismo segundo ya dibujado, no repetir (evita parpadeo)
     mov [ultimo_segundo], dh
@@ -187,6 +232,7 @@ bienvenida_prompt      db "Presione ENTER para continuar...", 0
 reloj_titulo           db "-- Modo Reloj --", 0
 crono_titulo           db "-- Modo Cronometro --", 0
 controles_msg          db "M: modo | S: iniciar/pausar | R: reiniciar | Esc: salir", 0
+controles_msg2         db "A: alarma | C: cancelar alarma", 0
 salida_msg             db "Saliendo...", 0
 modo_actual            db MODO_RELOJ
 ultimo_segundo         db 0xFF          ; Segundo BCD ya dibujado; 0xFF fuerza el primer dibujo
