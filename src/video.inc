@@ -47,3 +47,44 @@ imprimir_en:
     jmp .loop
 .fin:
     ret
+
+; imprimir_en_attr
+; Entrada: DH = fila, DL = columna, SI = puntero a string terminado en 0,
+;          BL = atributo de video (ej. 0x4F = blanco sobre rojo)
+; El teletipo de la BIOS (imprimir_en) hereda el atributo ya presente en cada
+; celda y no permite elegir color, así que para el aviso parpadeante de la
+; alarma se escribe directo en la memoria de video (segmento 0xB800, 2 bytes
+; por celda: carácter + atributo). No mueve el cursor de texto del BIOS.
+imprimir_en_attr:
+    push ax
+    push cx
+    push di
+    push es
+
+    xor ax, ax
+    mov al, dh
+    mov cx, 80
+    mul cx              ; ax = fila*80 (cabe en ax para filas 0-24; mul cx exige
+                         ; AX completo, no solo AL, de ahí el xor previo)
+    xor ch, ch
+    mov cl, dl
+    add ax, cx          ; ax = índice de celda (fila*80+columna)
+    shl ax, 1           ; ax = offset en bytes (2 bytes por celda)
+    mov di, ax
+
+    mov ax, 0xB800
+    mov es, ax
+.loop:
+    lodsb
+    or al, al
+    jz .fin
+    stosb
+    mov al, bl
+    stosb
+    jmp .loop
+.fin:
+    pop es
+    pop di
+    pop cx
+    pop ax
+    ret
