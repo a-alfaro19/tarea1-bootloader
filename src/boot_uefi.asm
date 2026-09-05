@@ -49,6 +49,14 @@ efi_main:
     mov r13, [r12 + 64]        ; ConOut (SystemTable+64)
     mov r14, [r12 + 48]         ; ConIn (SystemTable+48)
 
+    ; --- Forzar Modo de Texto Estándar (80x25 / Modo 0) ---
+    ; Evita que las laptops con UEFI en alta resolución compriman el texto en una esquina.
+    sub rsp, 32
+    mov rcx, r13              ; this (ConOut)
+    xor rdx, rdx              ; Modo 0 (el estándar universal 80x25)
+    call qword [r13 + 32]     ; SetMode está en el offset +32 de ConOut
+    add rsp, 32
+
     ; ==========================================================================
     ; 1. Pantalla de bienvenida (protocolo ConOut)
     ; ==========================================================================
